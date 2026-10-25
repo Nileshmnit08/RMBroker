@@ -1,0 +1,532 @@
+'use client'
+
+import React, { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { MyAvailabilitiesTable } from '@/src/components/dashboard/my-availabilities-table'
+import { SellerDealsTable } from '@/src/components/dashboard/seller-deals-table'
+import { PostAvailabilityDialog } from '@/src/components/dialogs/post-availability-dialog'
+import { ActionRequiredBanner } from '@/src/components/dashboard/action-required-banner'
+import { KpiCard, KpiGrid } from '@/src/components/dashboard/kpi-cards'
+import { DataFreshness } from '@/src/components/ui/data-freshness'
+import { formatIndianCurrency } from '@/lib/utils'
+import { 
+  Package, 
+  Truck, 
+  TrendingUp, 
+  FlaskConical, 
+  Handshake, 
+  FolderLock, 
+  Wallet, 
+  Users, 
+  ShieldCheck, 
+  FileText,
+  AlertCircle,
+  ArrowRight,
+  Sparkles
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { SellerCommandCenterData } from '@/src/server/actions/analytics-actions'
+import { BrokerRequestInbox } from '@/src/components/dashboard/broker-request-inbox'
+import { BookedOrdersTable } from '@/src/components/dashboard/booked-orders-table'
+import { SettlementWorkspaceView } from '@/src/components/dashboard/settlement-workspace-view'
+import { SellerQualityVaultView } from '@/src/components/dashboard/seller-quality-vault-view'
+import { SellerGlobalLabReportItem } from '@/src/server/actions/lab-actions'
+
+interface SellerWorkspaceShellProps {
+  profile: any
+  fullProfile?: any
+  userRole?: string
+  availabilities: any[]
+  deals: any[]
+  brokerRequests?: any[]
+  vehicleTypes: any[]
+  labReports?: SellerGlobalLabReportItem[]
+  commandCenterData?: SellerCommandCenterData
+}
+
+export function SellerWorkspaceShell({
+  profile,
+  fullProfile,
+  userRole = "SELLER_ADMIN",
+  availabilities,
+  deals,
+  brokerRequests = [],
+  vehicleTypes,
+  labReports = [],
+  commandCenterData,
+}: SellerWorkspaceShellProps) {
+  const searchParams = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+
+  // Default to URL tab or Dashboard tab
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'dashboard')
+
+  // Sync tab state when URL searchParams change (e.g. on browser back/forward)
+  useEffect(() => {
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl)
+    } else if (!tabFromUrl && activeTab !== 'dashboard') {
+      setActiveTab('dashboard')
+    }
+  }, [tabFromUrl])
+
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab)
+    if (typeof window !== 'undefined') {
+      const url = newTab === 'dashboard' ? '/seller' : `/seller?tab=${newTab}`
+      window.history.replaceState(null, '', url)
+    }
+  }
+
+  const companyName = fullProfile?.company?.name || profile?.name || "Seller Trading Workspace"
+  const kpis = commandCenterData?.kpis || {
+    activeAvailabilitiesCount: availabilities.length,
+    pendingDispatchesCount: deals.filter(d => d.deal.status === 'Dispatch Pending').length,
+    totalRevenue: 0,
+  }
+  const actionItems = commandCenterData?.actionItems || []
+
+  return (
+    <div className="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 font-sans antialiased">
+        
+        {/* ========================================================================= */}
+        {/* TAB 1: SELLER DASHBOARD (OPERATIONAL DASHBOARD)                            */}
+        {/* ========================================================================= */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6 sm:space-y-8 animate-in fade-in-50 duration-200">
+            
+            {/* Task 1: Page Header & Title Section with Data Freshness */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Seller Dashboard
+                  </h1>
+                  <span className="hidden sm:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-[#047857] border border-emerald-200">
+                    Live Operational
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  High-priority operational overview, supply health & pending actions.
+                </p>
+              </div>
+
+              {/* Top Right: Data Freshness Indicator + Primary Action */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                <DataFreshness />
+                <div className="w-full sm:w-auto">
+                  <PostAvailabilityDialog />
+                </div>
+              </div>
+            </div>
+
+            {/* Task 2: Top KPI Ribbon (3 Cards) */}
+            <section aria-label="Operational Metrics Summary">
+              <KpiGrid className="grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3">
+                <KpiCard 
+                  title="ACTIVE INVENTORY" 
+                  value={kpis.activeAvailabilitiesCount}
+                  icon={Package}
+                  badgeColor="emerald"
+                  description="Open listed supply lots ready for matching"
+                />
+                <KpiCard 
+                  title="PENDING DISPATCHES" 
+                  value={kpis.pendingDispatchesCount}
+                  icon={Truck}
+                  badgeColor="amber"
+                  description="Booked deals awaiting logistics transport"
+                />
+                <KpiCard 
+                  title="TOTAL DEAL REVENUE" 
+                  value={formatIndianCurrency(kpis.totalRevenue)}
+                  icon={TrendingUp}
+                  badgeColor="indigo"
+                  description="Cumulative settled trade volume"
+                />
+              </KpiGrid>
+            </section>
+
+            {/* Task 3: P0 Action Required Section (Critical Task Alerts) */}
+            <ActionRequiredBanner 
+              actionItems={actionItems} 
+              onNavigateTab={handleTabChange} 
+            />
+
+            {/* Task 4: Operational Quick Access Cards (Bottom Row - 2 Columns) */}
+            <section aria-label="Operational Quick Access" className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-700">
+                  Operational Workspaces
+                </h2>
+                <span className="text-xs text-slate-400 font-medium">Core Trading Engines</span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Left Card: Active Inventory Lots */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-[#ECFDF5] text-[#047857] border border-emerald-100">
+                          <Package className="w-5 h-5 stroke-[2]" />
+                        </div>
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+                            Active Inventory Lots
+                          </h3>
+                          <div className="text-xs text-slate-400 font-medium mt-0.5">Supply Lot Management</div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-[#ECFDF5] text-[#047857] border-emerald-200 font-bold text-xs px-2.5 py-1">
+                        {availabilities.length} Lots
+                      </Badge>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-600 mb-6 leading-relaxed">
+                      Track stock availability, asking rates, validity dates, and loading readiness.
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => handleTabChange('inventory')}
+                    className="w-full min-h-[48px] bg-[#059669] hover:bg-[#047857] text-white font-bold rounded-xl cursor-pointer shadow-xs gap-2"
+                  >
+                    <span>Manage All Inventory</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Right Card: Booked Deals & Dispatches */}
+                <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-[#EFF6FF] text-[#1D4ED8] border border-blue-100">
+                          <Truck className="w-5 h-5 stroke-[2]" />
+                        </div>
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+                            Booked Deals & Dispatches
+                          </h3>
+                          <div className="text-xs text-slate-400 font-medium mt-0.5">Logistics & Fulfilment</div>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="bg-[#EFF6FF] text-[#1D4ED8] border-blue-200 font-bold text-xs px-2.5 py-1">
+                        {deals.length} Active
+                      </Badge>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-600 mb-6 leading-relaxed">
+                      Manage logistics dispatches, driver assignments, lorry receipts and disputes.
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => handleTabChange('deals')}
+                    variant="outline"
+                    className="w-full min-h-[48px] border-slate-300 text-slate-800 hover:bg-slate-50 font-bold rounded-xl cursor-pointer shadow-2xs gap-2"
+                  >
+                    <span>View Booked Deals</span>
+                    <ArrowRight className="w-4 h-4 text-slate-500" />
+                  </Button>
+                </div>
+
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 2: INVENTORY & AVAILABILITY                                            */}
+        {/* ========================================================================= */}
+        {activeTab === 'inventory' && (
+          <div className="space-y-6 animate-in fade-in-50 duration-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  Inventory & Availabilities
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Manage active commodity lots, set asking prices, and monitor validity windows.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <DataFreshness />
+                <div className="w-full sm:w-auto">
+                  <PostAvailabilityDialog />
+                </div>
+              </div>
+            </div>
+
+            <MyAvailabilitiesTable availabilities={availabilities} />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 3: QUALITY & LAB TESTING                                               */}
+        {/* ========================================================================= */}
+        {activeTab === 'quality' && (
+          <SellerQualityVaultView
+            initialReports={labReports}
+            onNavigateToInventory={() => handleTabChange('inventory')}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 4: REQUESTS & DEALS                                                    */}
+        {/* ========================================================================= */}
+        {activeTab === 'deals' && (
+          <div className="space-y-8 animate-in fade-in-50 duration-200">
+            {/* Broker Commercial Requests Inbox (Sprint 16.3 & 16.4) */}
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12 bg-white rounded-2xl border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold">Loading Broker Inbox...</span>
+              </div>
+            }>
+              <BrokerRequestInbox initialRequests={brokerRequests} />
+            </Suspense>
+
+            {/* Confirmed / Booked Deals Table */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900">
+                    Booked Deals & Executions
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Finalized transactions ready for logistics dispatch and invoice generation.
+                  </p>
+                </div>
+                <Badge variant="outline" className="bg-slate-100 text-slate-700 font-semibold text-xs">
+                  {deals.length} Booked
+                </Badge>
+              </div>
+
+              <SellerDealsTable deals={deals} vehicleTypes={vehicleTypes} />
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 5: ORDERS & DISPATCH (Sprint 19)                                      */}
+        {/* ========================================================================= */}
+        {activeTab === 'orders' && (
+          <div className="space-y-8 animate-in fade-in-50 duration-200">
+            {/* Booked Orders & Dispatch Entry Gate */}
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12 bg-white rounded-2xl border border-slate-200">
+                <span className="text-xs text-slate-500 font-semibold">Loading Booked Orders...</span>
+              </div>
+            }>
+              <BookedOrdersTable />
+            </Suspense>
+
+            {/* Historical Deals & Shipments View */}
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900">
+                    All Fulfilment & Deal Records
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Historical shipment executions, driver records, and live status tracking.
+                  </p>
+                </div>
+                <Badge variant="outline" className="bg-slate-100 text-slate-700 font-semibold text-xs">
+                  {deals.length} Total Deals
+                </Badge>
+              </div>
+
+              <SellerDealsTable deals={deals} vehicleTypes={vehicleTypes} />
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 6: PAYMENTS & SETTLEMENT                                               */}
+        {/* ========================================================================= */}
+        {activeTab === 'payments' && (
+          <div className="space-y-8 animate-in fade-in-50 duration-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  Payments & Settlement View
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Track receivable balances, advance disbursements, payment confirmations & exceptions.
+                </p>
+              </div>
+              <DataFreshness />
+            </div>
+
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 bg-white rounded-2xl border border-slate-200">
+                  <span className="text-xs text-slate-500 font-semibold">Loading Settlement Ledger...</span>
+                </div>
+              }
+            >
+              <SettlementWorkspaceView />
+            </Suspense>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 7: REPORTS & VISIBILITY                                               */}
+        {/* ========================================================================= */}
+        {activeTab === 'reports' && (
+          <div className="space-y-6 animate-in fade-in-50 duration-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  Reports & Visibility
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Financial math, inventory turnover state, daily sales volume & audit-ready CSV exports.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href="/seller/reports"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Open Full Reports Engine</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+
+            <Card className="rounded-2xl border-slate-200 shadow-xs bg-white p-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="space-y-2 max-w-xl">
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-xs">
+                    Zero-Buyer PII Server-Side Aggregation
+                  </Badge>
+                  <h3 className="text-lg font-bold text-slate-900">Interactive Analytics & Export Center</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    View time-series sales trends (7d / 30d / All Time), real-time inventory distribution (Available, Reserved, Sold), complete logistics pipeline status, and download one-click audit CSV reports.
+                  </p>
+                </div>
+                <a
+                  href="/seller/reports"
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#047857] hover:bg-[#065f46] text-white font-bold text-sm shadow-sm transition-all text-center shrink-0 cursor-pointer inline-flex items-center justify-center gap-2"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  <span>Launch Analytics Dashboard</span>
+                </a>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 8: DOCUMENTS VAULT                                                     */}
+        {/* ========================================================================= */}
+        {activeTab === 'documents' && (
+          <div className="space-y-6 animate-in fade-in-50 duration-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  Trade Documents Vault
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Secure repository for GST invoices, Lorry Receipts (LR), COA reports & trade agreements.
+                </p>
+              </div>
+              <DataFreshness />
+            </div>
+
+            <Card className="rounded-2xl border-slate-200 shadow-xs bg-white">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-700">
+                    <FolderLock className="w-6 h-6 stroke-[2]" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-bold text-slate-900">Encrypted Document Storage</CardTitle>
+                    <CardDescription className="text-sm text-slate-500">
+                      All uploaded files are protected by Supabase RLS and partitioned by deal reference.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                    <FileText className="w-5 h-5 text-indigo-600 mb-2" />
+                    <div className="font-bold text-slate-900 text-sm">Tax Invoices</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Commercial bills uploaded upon dispatch</div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                    <Truck className="w-5 h-5 text-emerald-600 mb-2" />
+                    <div className="font-bold text-slate-900 text-sm">Lorry Receipts (LR)</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Transporter receipts & weighbridge slips</div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-slate-200 bg-white">
+                    <FlaskConical className="w-5 h-5 text-amber-600 mb-2" />
+                    <div className="font-bold text-slate-900 text-sm">Quality COA Reports</div>
+                    <div className="text-xs text-slate-500 mt-0.5">Lab test certifications attached to lots</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 8: TEAM & USER MANAGEMENT (SELLER_ADMIN ONLY)                          */}
+        {/* ========================================================================= */}
+        {activeTab === 'team' && (
+          <div className="space-y-6 animate-in fade-in-50 duration-200">
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/90 shadow-xs">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                Team & Access Control
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Manage authorized users and permissions for {companyName}.
+              </p>
+            </div>
+
+            <Card className="rounded-2xl border-slate-200 shadow-xs bg-white">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-emerald-50 text-[#047857]">
+                      <Users className="w-6 h-6 stroke-[2]" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg font-bold text-slate-900">Organization Members</CardTitle>
+                      <CardDescription className="text-sm text-slate-500">
+                        Administered under Seller RBAC rules.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-[#047857] border-emerald-200 font-bold">
+                    SELLER_ADMIN View
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200/70">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-sm">
+                      {fullProfile?.user?.name?.[0]?.toUpperCase() || 'S'}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 text-sm">{fullProfile?.user?.name || 'Primary Contact'}</div>
+                      <div className="text-xs text-slate-500">{fullProfile?.user?.email || fullProfile?.user?.mobile}</div>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-md text-[11px] font-mono font-bold uppercase tracking-wider bg-emerald-100 text-[#047857] border border-emerald-200">
+                    SELLER_ADMIN
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+    </div>
+  )
+}

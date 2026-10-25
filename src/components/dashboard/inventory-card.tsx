@@ -1,0 +1,364 @@
+"use client";
+
+import { useState } from "react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import {
+  Loader2,
+  MapPin,
+  Calendar,
+  Ban,
+  RefreshCw,
+  Pencil,
+  FlaskConical,
+  FileText,
+  Truck,
+  Clock,
+  AlertCircle,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { QualityStatusBadge } from "@/src/components/dashboard/quality-status-badge";
+import { LoadingStatusBadge } from "@/src/components/dashboard/loading-status-badge";
+import { LoadingStatusModal } from "@/src/components/dashboard/loading-status-modal";
+import { cancelAvailabilityAction } from "@/src/server/actions/availability-actions";
+import { LabTestForm } from "@/src/components/forms/lab-test-form";
+
+export interface InventoryCardProps {
+  item: {
+    id: string;
+    commodityId?: string | null;
+    quantity: number | string;
+    price: string | number;
+    status: string;
+    createdAt: Date | string;
+    validUntil: Date | string;
+    commodityName: string | null;
+    categoryName?: string | null;
+    industryName?: string | null;
+    gradeName: string | null;
+    unitSymbol: string | null;
+    stateName: string | null;
+    districtName: string | null;
+    lotNumber?: string | null;
+    lab_status?: string | null;
+    lab_valid_until?: Date | string | null;
+    labStatus?: string | null;
+    labValidUntil?: Date | string | null;
+    labTestStatus?: string | null;
+    labTestValidUntil?: Date | string | null;
+    labTestTestDate?: Date | string | null;
+    labTestId?: string | null;
+    loadingStatus?: string | null;
+    loadingDuration?: number | null;
+    loadingStartDate?: Date | string | null;
+    loadingCapacity?: string | number | null;
+    loadingRemarks?: string | null;
+    loadingUpdatedAt?: Date | string | null;
+  };
+  onCancelSuccess?: () => void;
+}
+
+export function InventoryCard({ item, onCancelSuccess }: InventoryCardProps) {
+  const router = useRouter();
+  const [cancelling, setCancelling] = useState(false);
+  const [labDialogOpen, setLabDialogOpen] = useState(false);
+  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
+
+  const isOpen = item.status === "Active" || item.status === "Open";
+  const isExpired = item.status === "Expired";
+  const canManageLotOperations = ["Active", "Open", "Draft", "Pending Approval"].includes(item.status);
+
+  async function handleCancel() {
+    setCancelling(true);
+    try {
+      const res = await cancelAvailabilityAction(item.id);
+      if (res.success) {
+        toast.success("Availability lot cancelled successfully");
+        onCancelSuccess?.();
+      } else {
+        toast.error(res.error || "Failed to cancel availability lot");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "An unexpected error occurred");
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 sm:p-6 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between relative group">
+      <div>
+        {/* TOP HEADER: Breadcrumb • Commodity • Quality & Loading Badges */}
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div>
+            {(item.industryName || item.categoryName) && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                {[item.industryName, item.categoryName].filter(Boolean).join(" • ")}
+              </span>
+            )}
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+              {item.commodityName || "Commodity"}
+            </span>
+            <h3 className="text-base sm:text-lg font-semibold text-slate-900 leading-tight">
+              {item.gradeName || "Standard Grade"}
+            </h3>
+            {item.lotNumber && (
+              <span className="text-[11px] font-mono font-medium text-slate-500 block mt-0.5">
+                Lot #{item.lotNumber}
+              </span>
+            )}
+          </div>
+          
+          {/* BADGES STACK */}
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <Badge
+              variant="outline"
+              className={
+                isOpen
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 font-semibold px-2.5 py-1 text-xs shrink-0 rounded-full"
+                  : isExpired
+                  ? "bg-amber-50 text-amber-700 border-amber-200/80 font-semibold px-2.5 py-1 text-xs shrink-0 rounded-full"
+                  : "bg-slate-100 text-slate-600 border-slate-200 font-semibold px-2.5 py-1 text-xs shrink-0 rounded-full"
+              }
+            >
+              {item.status === "Open" ? "Active" : item.status}
+            </Badge>
+
+            {/* Quality Readiness Badge */}
+            <QualityStatusBadge
+              status={item.lab_status || item.labStatus || item.labTestStatus}
+              validUntil={item.lab_valid_until || item.labValidUntil || item.labTestValidUntil}
+              testDate={item.labTestTestDate}
+            />
+
+            {/* Loading Readiness Badge (Sprint 16.2) */}
+            <LoadingStatusBadge
+              status={item.loadingStatus}
+              duration={item.loadingDuration}
+              startDate={item.loadingStartDate}
+            />
+          </div>
+        </div>
+
+        {/* STATS: Quantity & Asking Rate */}
+        <div className="grid grid-cols-2 gap-3 py-3 px-3.5 bg-slate-50/80 rounded-xl border border-slate-100 mb-3">
+          <div>
+            <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
+              Available Stock
+            </span>
+            <span className="text-base sm:text-lg font-bold text-slate-900">
+              {item.quantity} {item.unitSymbol || "Units"}
+            </span>
+          </div>
+          <div>
+            <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
+              Asking Rate
+            </span>
+            <span className="text-base sm:text-lg font-bold text-[#059669]">
+              ₹{item.price}
+            </span>
+          </div>
+        </div>
+
+        {/* OPERATIONAL LOADING READINESS DETAILS (IF CONFIGURED) */}
+        {item.loadingStatus && item.loadingStatus !== "Not Ready" && (
+          <div className="mb-3 px-3 py-2 bg-slate-50/90 rounded-xl border border-slate-100 space-y-1 text-xs">
+            <div className="flex items-center justify-between gap-1 text-slate-700 font-medium">
+              <span className="flex items-center gap-1.5 truncate">
+                <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="font-semibold text-slate-900">{item.loadingStatus}</span>
+                {item.loadingDuration ? (
+                  <span className="text-slate-500">({item.loadingDuration} days duration)</span>
+                ) : null}
+              </span>
+              {item.loadingStartDate && (
+                <span className="text-[11px] text-slate-500 shrink-0">
+                  Starts: {format(new Date(item.loadingStartDate), "MMM d")}
+                </span>
+              )}
+            </div>
+            {item.loadingRemarks && (
+              <p className="text-[11px] text-slate-500 italic truncate pl-5">
+                &ldquo;{item.loadingRemarks}&rdquo;
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* LOCATION & VALIDITY METADATA */}
+        <div className="space-y-1.5 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="truncate">
+              {[item.districtName, item.stateName].filter(Boolean).join(", ") || "Location Unspecified"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <span className="font-medium text-slate-600">
+              Valid till {format(new Date(item.validUntil), "MMM d, yyyy")}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ACTION FOOTER */}
+      {(isOpen || canManageLotOperations || isExpired) && (
+        <div className="pt-4 mt-4 border-t border-slate-100 space-y-2.5">
+          
+          {/* Quick-Action: Update Loading Readiness */}
+          {canManageLotOperations && (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => setLoadingModalOpen(true)}
+              className="w-full min-h-[48px] h-12 text-slate-800 hover:text-slate-900 hover:bg-sky-50/70 border-slate-300 hover:border-sky-300 font-semibold rounded-xl text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs group/loading-btn"
+            >
+              <Truck className="h-4 w-4 text-sky-600 group-hover/loading-btn:scale-110 transition-transform" />
+              <span>Update Loading Readiness</span>
+            </Button>
+          )}
+
+          {/* Quick-Action: Lab Test Evidence Trigger */}
+          {canManageLotOperations && (
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={() => setLabDialogOpen(true)}
+              className="w-full min-h-[48px] h-12 text-slate-800 hover:text-slate-900 hover:bg-emerald-50/60 border-slate-300 hover:border-emerald-300 font-semibold rounded-xl text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs group/btn"
+            >
+              <FlaskConical className="h-4 w-4 text-emerald-600 group-hover/btn:scale-110 transition-transform" />
+              <span>
+                {item.labTestId ||
+                item.lab_status === "Not Required" ||
+                item.labStatus === "Not Required" ||
+                item.labTestStatus === "Not Required" ||
+                item.lab_status === "Under Review" ||
+                item.lab_status === "Verified" ||
+                item.labStatus === "Under Review" ||
+                item.labStatus === "Verified"
+                  ? "Manage Lab Report"
+                  : "Upload Lab Report"}
+              </span>
+            </Button>
+          )}
+
+          {/* Active Inventory Actions: Cancel & Edit */}
+          {isOpen && (
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={cancelling}
+                onClick={handleCancel}
+                className="w-full min-h-[48px] h-12 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200 hover:border-rose-200 font-semibold rounded-xl text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {cancelling ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-rose-600" />
+                ) : (
+                  <>
+                    <Ban className="h-4 w-4" />
+                    Cancel
+                  </>
+                )}
+              </Button>
+              <Link
+                href={`?edit=${item.id}`}
+                className="w-full min-h-[48px] h-12 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-xl text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+            </div>
+          )}
+
+          {/* Expired Inventory Action: Quick Renew */}
+          {isExpired && (
+            <div>
+              <Link
+                href={`?renew=${item.id}`}
+                className="w-full min-h-[48px] h-12 bg-[#059669] hover:bg-[#047857] text-white font-semibold rounded-xl text-sm sm:text-base transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Quick Renew
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading Readiness Modal Dialog / Sheet */}
+      <LoadingStatusModal
+        open={loadingModalOpen}
+        onOpenChange={setLoadingModalOpen}
+        availabilityId={item.id}
+        lotNumber={item.lotNumber}
+        commodityName={item.commodityName}
+        initialData={{
+          loadingStatus: item.loadingStatus,
+          loadingDuration: item.loadingDuration,
+          loadingStartDate: item.loadingStartDate,
+          loadingCapacity: item.loadingCapacity,
+          loadingRemarks: item.loadingRemarks,
+        }}
+        onSuccess={() => {
+          onCancelSuccess?.();
+        }}
+      />
+
+      {/* Lab Evidence Modal Dialog */}
+      {canManageLotOperations && (
+        <Dialog open={labDialogOpen} onOpenChange={setLabDialogOpen}>
+          <DialogContent showCloseButton={false} className="sm:max-w-[500px] max-h-[90dvh] flex flex-col overflow-hidden p-0 rounded-2xl">
+            <DialogHeader className="p-6 pb-4 border-b border-slate-100 bg-white flex flex-row items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-xl bg-emerald-100/90 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                  <FlaskConical className="h-5 w-5" />
+                </div>
+                <DialogTitle className="text-lg font-bold text-slate-900">
+                  Lab Test Report
+                </DialogTitle>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setLabDialogOpen(false)}
+                className="h-10 w-10 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0 cursor-pointer flex items-center justify-center"
+                aria-label="Close dialog"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </DialogHeader>
+
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <LabTestForm
+                availabilityId={item.id}
+                commodityId={item.commodityId || ""}
+                onSuccess={() => {
+                  setLabDialogOpen(false);
+                  router.refresh();
+                }}
+                onCancel={() => setLabDialogOpen(false)}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
